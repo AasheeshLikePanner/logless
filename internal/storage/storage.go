@@ -52,3 +52,22 @@ func GetLevelLogs(level string) ([]byte, error) {
 
     return allLogs, nil
 }
+
+func GetAllLogs() ([][]byte, error) {
+    rows, err := DB.Query(context.Background(), "SELECT compressed_data FROM logs")
+    if err != nil {
+        return nil, err
+    }
+    defer rows.Close()
+
+    var logs [][]byte
+    for rows.Next() {
+        var data []byte
+        if err := rows.Scan(&data); err != nil {
+            return nil, err
+        }
+        logs = append(logs, data)
+    }
+    log.Println("Fetched all logs from the database", logs);
+    return logs, nil
+}
