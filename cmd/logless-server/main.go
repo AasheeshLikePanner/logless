@@ -15,8 +15,8 @@ import (
 // Concrete implementation of Storage interface for Postgres
 type PostgresStorage struct{}
 
-func (p *PostgresStorage) Save(level string, data []byte) error {
-	return storage.SaveLog(level, data)
+func (p *PostgresStorage) Save(level string, data []byte, jsonData []byte) error {
+	return storage.SaveLog(level, data, jsonData)
 }
 
 func (p *PostgresStorage) GetAllLogs() ([][]byte, error) {  // FIX: return slice of logs
@@ -40,7 +40,7 @@ func main() {
 
 	// Router setup
 	mux := http.NewServeMux()
-	mux.HandleFunc("/api/log", handler.HttpLogHandler)     // Save log
+	mux.Handle("/api/log", withCORS(http.HandlerFunc(handler.HttpLogHandler)))   // Save log
 	mux.HandleFunc("/api/logs", handler.HttpGetAllLogs)    // Get all logs
 	mux.HandleFunc("/api/health", api.HealthCheckHandler)  // Healthcheck
 
@@ -65,4 +65,19 @@ func main() {
 
 	log.Println("Shutting down server...")
 	server.Close() // clean shutdown
+}
+
+func withCORS(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*") // Or specific origin in production
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+
+		next.ServeHTTP(w, r)
+	})
 }

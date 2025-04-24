@@ -18,12 +18,14 @@ func InitPostgres(){
 	}
 }
 
-func SaveLog(level string, data []byte) error {
-	_, err := DB.Exec(context.Background(),
-		"INSERT INTO logs(level, compressed_data) VALUES($1, $2)", level, data,
-	)
+func SaveLog(level string, data []byte, jsonData []byte) error {
+	// Correctly passing context.Background() as the first argument
+	_, err := DB.Exec(context.Background(), 
+		`INSERT INTO logs (level, compressed_data, log_text) VALUES ($1, $2, to_tsvector($3))`,
+		level, data, string(jsonData))
 	return err
 }
+
 
 func GetLevelLogs(level string) ([]byte, error) {
     rows, err := DB.Query(context.Background(),

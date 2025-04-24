@@ -12,7 +12,7 @@ import (
 )
 
 type Storage interface {
-    Save(level string, data []byte) error
+    Save(level string, data []byte, jsonData []byte) error
 	GetAllLogs() ([][]byte, error)
 	GetLevelLogs(level string) ([][]byte, error)
 }
@@ -63,7 +63,7 @@ func (p *Processor) ProcessLog(entry model.LogEntry)	error {
 	}
 	gz.Close();
 
-	return p.storage.Save(entry.Level,buf.Bytes());
+	return p.storage.Save(entry.Level,buf.Bytes(), data);
 }
 
 func (p *Processor) GetLevelLogs(level string) ([][]byte, error) {
