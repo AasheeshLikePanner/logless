@@ -7,6 +7,7 @@ import SearchFilters from "./SearchFilters";
 import LogsPerTimeChart from "./Charts/LogsPerTimeChart";
 import LogsByLevelChart from "./Charts/LogsByLevelChart";
 import LogsByUserChart from "./Charts/LogsByUserChart";
+import { getAllLogs, getSearchLogs } from "@/apis/api";
 
 export default function LogManagementSystem() {
   const [logs, setLogs] = useState([]);
@@ -20,24 +21,30 @@ export default function LogManagementSystem() {
     const fetchData = async () => {
       try {
         setIsLoading(true);
-        // Mock data
-        const mockData = Array(50).fill(null).map((_, i) => ({
-          TimeStamp: new Date(Date.now() - i * 1000 * 60 * 30).toISOString(),
-          Message: i % 5 === 0 
-            ? `Error processing request: timeout` 
-            : i % 3 === 0 
-              ? `Warning: High memory usage detected` 
-              : `User action completed successfully`,
-          LogLevel: i % 5 === 0 ? "ERROR" : i % 3 === 0 ? "WARN" : "INFO",
-          Context: {
-            userId: i % 3 === 0 ? "abc123" : "def456",
-            endpoint: i % 4 === 0 ? "/api/users" : "/api/dashboard",
-            env: i % 7 === 0 ? "dev" : "prod"
-          }
+        // const mockData = Array(50).fill(null).map((_, i) => ({
+        //   TimeStamp: new Date(Date.now() - i * 1000 * 60 * 30).toISOString(),
+        //   Message: i % 5 === 0 
+        //     ? `Error processing request: timeout` 
+        //     : i % 3 === 0 
+        //       ? `Warning: High memory usage detected` 
+        //       : `User action completed successfully`,
+        //   LogLevel: i % 5 === 0 ? "ERROR" : i % 3 === 0 ? "WARN" : "INFO",
+        //   Context: {
+        //     userId: i % 3 === 0 ? "abc123" : "def456",
+        //     endpoint: i % 4 === 0 ? "/api/users" : "/api/dashboard",
+        //     env: i % 7 === 0 ? "dev" : "prod"
+        //   }
+        // }));
+        const response = await getAllLogs();
+        console.log( "Response from API:", response);
+        const data = response.map(log => ({
+          ...JSON.parse(atob(log)) // decode Base64, then parse JSON
         }));
-        
-        setLogs(mockData);
-        setFilteredLogs(mockData);
+
+        console.log("Fetched logs:", data);
+
+        setLogs(data);
+        setFilteredLogs(data);
       } catch (error) {
         console.error("Failed to fetch logs:", error);
       } finally {
@@ -48,7 +55,7 @@ export default function LogManagementSystem() {
     fetchData();
   }, []);
 
-  const handleSearch = (term) => {
+  const handleSearch = async (term) => {
     if (!term.trim()) {
       setFilteredLogs(logs);
       return;
@@ -58,11 +65,18 @@ export default function LogManagementSystem() {
       log.Message.toLowerCase().includes(term.toLowerCase()) ||
       (log.Context?.userId && log.Context.userId.toLowerCase().includes(term.toLowerCase()))
     );
-    
-    setFilteredLogs(filtered);
+
+    term = term.replaceAll(" ", " | ")
+    const response  = await getSearchLogs(term.toLowerCase());
+    console.log("Response from API:", response);
+    const data = response.map(log => ({
+      ...JSON.parse(atob(log))
+    }))
+    console.log("Fetched logs:", data);
+    setFilteredLogs(data)
   };
 
-  const handleFilter = (filters) => {
+  const handleFilter = async (filters) => {
     let filtered = [...logs];
     
     if (filters.logLevel) {
