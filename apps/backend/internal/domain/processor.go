@@ -16,6 +16,8 @@ type Storage interface {
 	GetAllLogs() ([][]byte, error)
 	GetLevelLogs(level string) ([][]byte, error)
 	GetSearchLogs(searchTerm string) ([][]byte, error)
+	SetLevelColors(level string, color string) error
+	GetLevelColors() ([]string, error)
 }
 
 type Processor struct {
@@ -204,3 +206,21 @@ func (p *Processor) GetSearchLogs(searchTerm string) ([][]byte, error) {
 
 	return decompressedLogs, nil
 }
+
+func (p *Processor) SetLevelColors(level string, color string) error {
+	if level == "" || color == "" {
+		return errors.New("level and color cannot be empty")
+	}
+
+	return p.storage.SetLevelColors(level, color)
+}
+
+func (p *Processor) GetLevelColors() ([]string, error) {
+	colors, err := p.storage.GetLevelColors()
+	if err != nil {
+		return nil, err
+	}
+
+	return colors, nil
+}
+

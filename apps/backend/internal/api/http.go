@@ -141,3 +141,50 @@ func (h *LogHandler) HttpGetSearchLogs(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	w.Write(jsonLogs)
 }
+
+func (h *LogHandler) HttpSetLevelColors(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Invalid request method", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var levelColors model.ColorEntry
+	if err := json.NewDecoder(r.Body).Decode(&levelColors); err != nil {
+		http.Error(w, "Failed to decode JSON", http.StatusBadRequest)
+		log.Printf("Failed to decode JSON: %v", err)
+		return
+	}
+
+	if err := h.Processor.SetLevelColors(levelColors.Level, levelColors.Color); err != nil {
+		http.Error(w, "Failed to set level colors", http.StatusInternalServerError)
+		log.Printf("Failed to set level colors: %v", err)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte("Level colors set successfully"))
+}
+
+func (h *LogHandler) HttpGetLevelColors(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Invalid request method", http.StatusMethodNotAllowed)
+		return
+	}
+
+	colors, err := h.Processor.GetLevelColors()
+	if err != nil {
+		http.Error(w, "Failed to retrieve level colors", http.StatusInternalServerError)
+		log.Printf("Failed to retrieve level colors: %v", err)
+		return
+	}
+
+	jsonColors, err := json.Marshal(colors)
+	if err != nil {
+		http.Error(w, "Failed to encode level colors", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	w.Write(jsonColors)
+}

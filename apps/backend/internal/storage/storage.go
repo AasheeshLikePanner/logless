@@ -95,3 +95,28 @@ func GetSearchLogs(searchTerm string) ([][]byte, error) {
 	}
 	return logs, nil
 }
+
+func GetLevelColors() ([]string, error) {
+	rows, err := DB.Query(context.Background(), "SELECT color FROM colors")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var colors []string
+	for rows.Next() {
+		var color string
+		if err := rows.Scan(&color); err != nil {
+			return nil, err
+		}
+		colors = append(colors, color)
+	}
+	return colors, nil
+}
+
+func SetLevelColors(level string, color string) error {
+	_, err := DB.Exec(context.Background(),
+		`INSERT INTO colors (level, color) VALUES ($1, $2)`,
+		level, color)
+	return err
+}

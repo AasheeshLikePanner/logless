@@ -21,20 +21,6 @@ export default function LogManagementSystem() {
     const fetchData = async () => {
       try {
         setIsLoading(true);
-        // const mockData = Array(50).fill(null).map((_, i) => ({
-        //   TimeStamp: new Date(Date.now() - i * 1000 * 60 * 30).toISOString(),
-        //   Message: i % 5 === 0 
-        //     ? `Error processing request: timeout` 
-        //     : i % 3 === 0 
-        //       ? `Warning: High memory usage detected` 
-        //       : `User action completed successfully`,
-        //   LogLevel: i % 5 === 0 ? "ERROR" : i % 3 === 0 ? "WARN" : "INFO",
-        //   Context: {
-        //     userId: i % 3 === 0 ? "abc123" : "def456",
-        //     endpoint: i % 4 === 0 ? "/api/users" : "/api/dashboard",
-        //     env: i % 7 === 0 ? "dev" : "prod"
-        //   }
-        // }));
         const response = await getAllLogs();
         console.log("Response from API:", response);
         setLogs(response);
