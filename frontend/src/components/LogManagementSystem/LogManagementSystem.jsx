@@ -36,15 +36,9 @@ export default function LogManagementSystem() {
         //   }
         // }));
         const response = await getAllLogs();
-        console.log( "Response from API:", response);
-        const data = response.map(log => ({
-          ...JSON.parse(atob(log)) // decode Base64, then parse JSON
-        }));
-
-        console.log("Fetched logs:", data);
-
-        setLogs(data);
-        setFilteredLogs(data);
+        console.log("Response from API:", response);
+        setLogs(response);
+        setFilteredLogs(response);
       } catch (error) {
         console.error("Failed to fetch logs:", error);
       } finally {

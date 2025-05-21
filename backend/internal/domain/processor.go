@@ -5,6 +5,7 @@ import (
 	"compress/gzip"
 	"encoding/json"
 	"errors"
+	"log"
 	"time"
 
 	"github.com/aasheesh/logless/internal/model"
@@ -93,12 +94,15 @@ func (p *Processor) GetLevelLogs(level string) ([][]byte, error) {
 			Level     string            `json:"Level"`
 			Message   string            `json:"Message"`
 			Context   map[string]string `json:"Context"`
-		}
+		}	
 
 		if err := json.Unmarshal(decompressedData.Bytes(), &logEntry); err != nil {
 			return nil, err
 		}
-
+		// Check if the log entry matches the requested level
+		if logEntry.Level != level {
+			continue
+		}
 		// Re-marshal the data to ensure it's properly formatted
 		formattedJSON, err := json.Marshal(logEntry)
 		if err != nil {
@@ -143,7 +147,8 @@ func (p *Processor) GetAllLogs() ([][]byte, error) {
 		if err := json.Unmarshal(decompressedData.Bytes(), &logEntry); err != nil {
 			return nil, err
 		}
-
+		// Check if the log entry matches the requested level
+		log.Println(logEntry.Level)
 		// Re-marshal the data to ensure it's properly formatted
 		formattedJSON, err := json.Marshal(logEntry)
 		if err != nil {

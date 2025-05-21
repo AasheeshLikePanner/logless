@@ -15,13 +15,13 @@ import { Clock, User } from "lucide-react";
 const LogTableRow = ({ log, onClick }) => {
   const getLevelBadge = (level) => {
     switch (level) {
-      case 'ERROR':
+      case 'error':
         return <Badge variant="destructive">Error</Badge>;
-      case 'WARN':
+      case 'warn':
         return <Badge variant="warning">Warning</Badge>;
-      case 'INFO':
+      case 'info':
         return <Badge variant="default">Info</Badge>;
-      case 'DEBUG':
+      case 'debug':
         return <Badge variant="secondary">Debug</Badge>;
       default:
         return <Badge variant="outline">{level}</Badge>;
@@ -40,7 +40,7 @@ const LogTableRow = ({ log, onClick }) => {
         {log.Message}
       </TableCell>
       <TableCell>
-        {getLevelBadge(log.LogLevel)}
+        {getLevelBadge(log.Level)}
       </TableCell>
       <TableCell>
         {log.Context?.userId ? (

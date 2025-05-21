@@ -66,7 +66,7 @@ func (h *LogHandler) HttpGetAllLogs(w http.ResponseWriter, r *http.Request) {
 	for _, logBytes := range logs {
 		logEntries = append(logEntries, logBytes)
 	}
-
+	
 	jsonResponse, err := json.Marshal(logEntries)
 	if err != nil {
 		http.Error(w, "Failed to encode logs", http.StatusInternalServerError)
