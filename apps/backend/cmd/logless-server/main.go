@@ -36,7 +36,7 @@ func (p *PostgresStorage) SetLevelColors(level string, color string) error {
 	return storage.SetLevelColors(level, color)
 }
 
-func (p *PostgresStorage) GetLevelColors() ([]string, error) {
+func (p *PostgresStorage) GetLevelColors() (map[string]string, error) {
 	return storage.GetLevelColors()
 }
 
@@ -58,10 +58,10 @@ func main() {
 	router.Handle("/api/log", withCORS(http.HandlerFunc(handler.HttpLogHandler))).Methods("POST")
 	router.Handle("/api/logs", withCORS(http.HandlerFunc(handler.HttpGetAllLogs))).Methods("GET")
 	router.Handle("/api/health", withCORS(http.HandlerFunc(api.HealthCheckHandler))).Methods("GET")
-	router.Handle("/api/logs/level/{level}", withCORS(http.HandlerFunc(handler.HttpGetLevelLogs))).Methods("GET")
-	router.Handle("/api/logs/search/{rest:.*}", withCORS(http.HandlerFunc(handler.HttpGetSearchLogs))).Methods("GET")
 	router.Handle("/api/logs/level/colors", withCORS(http.HandlerFunc(handler.HttpGetLevelColors))).Methods("GET")
 	router.Handle("/api/logs/level/colors/{level}", withCORS(http.HandlerFunc(handler.HttpSetLevelColors))).Methods("POST")
+	router.Handle("/api/logs/level/{level}", withCORS(http.HandlerFunc(handler.HttpGetLevelLogs))).Methods("GET")
+	router.Handle("/api/logs/search/{rest:.*}", withCORS(http.HandlerFunc(handler.HttpGetSearchLogs))).Methods("GET")
 
 	// Server setup
 	server := &http.Server{

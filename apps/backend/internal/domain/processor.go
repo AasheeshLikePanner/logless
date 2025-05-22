@@ -17,7 +17,7 @@ type Storage interface {
 	GetLevelLogs(level string) ([][]byte, error)
 	GetSearchLogs(searchTerm string) ([][]byte, error)
 	SetLevelColors(level string, color string) error
-	GetLevelColors() ([]string, error)
+	GetLevelColors() (map[string]string, error)
 }
 
 type Processor struct {
@@ -150,7 +150,7 @@ func (p *Processor) GetAllLogs() ([][]byte, error) {
 			return nil, err
 		}
 		// Check if the log entry matches the requested level
-		log.Println(logEntry.Level)
+		
 		// Re-marshal the data to ensure it's properly formatted
 		formattedJSON, err := json.Marshal(logEntry)
 		if err != nil {
@@ -208,6 +208,7 @@ func (p *Processor) GetSearchLogs(searchTerm string) ([][]byte, error) {
 }
 
 func (p *Processor) SetLevelColors(level string, color string) error {
+	log.Println(level, color);
 	if level == "" || color == "" {
 		return errors.New("level and color cannot be empty")
 	}
@@ -215,8 +216,9 @@ func (p *Processor) SetLevelColors(level string, color string) error {
 	return p.storage.SetLevelColors(level, color)
 }
 
-func (p *Processor) GetLevelColors() ([]string, error) {
+func (p *Processor) GetLevelColors() (map[string]string, error) {
 	colors, err := p.storage.GetLevelColors()
+	log.Println(colors)
 	if err != nil {
 		return nil, err
 	}

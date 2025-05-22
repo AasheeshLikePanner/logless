@@ -13,6 +13,7 @@ import { Badge } from "@/components/ui/badge";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import { Input } from "@/components/ui/input";
 import { HexColorPicker } from "react-colorful";
+import axios from "axios";
 
 // Default colors for standard log levels
 const DEFAULT_LEVEL_COLORS = {
@@ -152,15 +153,8 @@ export default function LogTable({ logs, onLogSelect }) {
   // Fetch custom colors from backend on component mount
   useEffect(() => {
     const fetchCustomColors = async () => {
-      try {
-        const response = await fetch('/api/logs/colors');
-        if (response.ok) {
-          const colors = await response.json();
-          setCustomColors(colors);
-        }
-      } catch (error) {
-        console.error('Failed to fetch custom colors:', error);
-      }
+      const response = await axios.get('http://localhost:8080/api/logs/level/colors');
+      setCustomColors(response.data);
     };
     
     fetchCustomColors();
@@ -172,13 +166,11 @@ export default function LogTable({ logs, onLogSelect }) {
     
     // Update backend with new colors
     try {
-      await fetch('/api/logs/colors', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(newColors),
+      const response = await axios.post(`http://localhost:8080/api/logs/level/colors/${level}`, {
+        color
       });
+      console.log(response.data);
+      
     } catch (error) {
       console.error('Failed to save custom colors:', error);
     }

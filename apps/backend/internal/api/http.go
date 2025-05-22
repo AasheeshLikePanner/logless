@@ -97,13 +97,11 @@ func (h *LogHandler) HttpGetLevelLogs(w http.ResponseWriter, r *http.Request) {
 		log.Printf("Failed to retrieve logs: %v", err)
 		return
 	}
-	log.Printf("Retrieved logs: %s", logs)
 	jsonLogs, err := json.Marshal(logs)
 	if err != nil {
 		http.Error(w, "Failed to encode logs", http.StatusInternalServerError)
 		return
 	}
-	log.Printf("Retrieved logs: %s", jsonLogs)
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	w.Write(jsonLogs)
@@ -130,13 +128,11 @@ func (h *LogHandler) HttpGetSearchLogs(w http.ResponseWriter, r *http.Request) {
 		log.Printf("Failed to retrieve logs: %v", err)
 		return
 	}
-	log.Printf("Retrieved logs: %s", logs)
 	jsonLogs, err := json.Marshal(logs)
 	if err != nil {
 		http.Error(w, "Failed to encode logs", http.StatusInternalServerError)
 		return
 	}
-	log.Printf("Retrieved logs: %s", jsonLogs)
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	w.Write(jsonLogs)
@@ -154,8 +150,10 @@ func (h *LogHandler) HttpSetLevelColors(w http.ResponseWriter, r *http.Request) 
 		log.Printf("Failed to decode JSON: %v", err)
 		return
 	}
-
-	if err := h.Processor.SetLevelColors(levelColors.Level, levelColors.Color); err != nil {
+	vars := mux.Vars(r)
+	level := vars["level"] 
+	log.Println(level);
+	if err := h.Processor.SetLevelColors(level, levelColors.Color); err != nil {
 		http.Error(w, "Failed to set level colors", http.StatusInternalServerError)
 		log.Printf("Failed to set level colors: %v", err)
 		return
@@ -166,6 +164,7 @@ func (h *LogHandler) HttpSetLevelColors(w http.ResponseWriter, r *http.Request) 
 }
 
 func (h *LogHandler) HttpGetLevelColors(w http.ResponseWriter, r *http.Request) {
+	log.Println('1')
 	if r.Method != http.MethodGet {
 		http.Error(w, "Invalid request method", http.StatusMethodNotAllowed)
 		return
