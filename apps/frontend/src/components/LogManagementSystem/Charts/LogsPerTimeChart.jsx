@@ -11,7 +11,7 @@ export default function LogsPerTimeChart({ logs }) {
   const chartData = Object.entries(logsByHour).map(([hour, logs]) => ({
     hour,
     count: logs.length,
-    errors: logs.filter(log => log.LogLevel === 'ERROR').length
+    errors: logs.filter(log => log.Level === 'error').length
   }));
   
   return (

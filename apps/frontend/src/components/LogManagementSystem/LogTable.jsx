@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { useState, useEffect } from "react";
+import { ChevronLeft, ChevronRight, Clock, User, Palette, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Table as UITable,
@@ -10,22 +10,66 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Clock, User } from "lucide-react";
+import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
+import { Input } from "@/components/ui/input";
+import { HexColorPicker } from "react-colorful";
 
-const LogTableRow = ({ log, onClick }) => {
+// Default colors for standard log levels
+const DEFAULT_LEVEL_COLORS = {
+  error: 'destructive',
+  warn: 'warning',
+  info: 'default',
+  debug: 'secondary',
+  fatal: 'destructive',
+  success: 'success'
+};
+
+const LogTableRow = ({ log, onClick, customColors, onColorChange, showBasic }) => {
   const getLevelBadge = (level) => {
-    switch (level) {
-      case 'error':
-        return <Badge variant="destructive">Error</Badge>;
-      case 'warn':
-        return <Badge variant="warning">Warning</Badge>;
-      case 'info':
-        return <Badge variant="default">Info</Badge>;
-      case 'debug':
-        return <Badge variant="secondary">Debug</Badge>;
-      default:
-        return <Badge variant="outline">{level}</Badge>;
+    // If showBasic is true or it's a default level, use default styling
+    if (showBasic || DEFAULT_LEVEL_COLORS[level]) {
+      switch (level) {
+        case 'error':
+        case 'fatal':
+          return <Badge variant="destructive">{level}</Badge>;
+        case 'warn':
+          return <Badge variant="warning">Warning</Badge>;
+        case 'info':
+          return <Badge variant="default">Info</Badge>;
+        case 'debug':
+          return <Badge variant="secondary">Debug</Badge>;
+        case 'success':
+          return <Badge variant="success">Success</Badge>;
+        default:
+          return <Badge variant="outline">{level}</Badge>;
+      }
     }
+    
+    // Use custom color if available
+    if (customColors[level]) {
+      return (
+        <Badge 
+          style={{ 
+            backgroundColor: customColors[level],
+            color: getContrastColor(customColors[level])
+          }}
+        >
+          {level}
+        </Badge>
+      );
+    }
+    
+    // Fallback to outline if no custom color
+    return <Badge variant="outline">{level}</Badge>;
+  };
+
+  // Helper function to determine text color based on background
+  const getContrastColor = (hexColor) => {
+    const r = parseInt(hexColor.substr(1, 2), 16);
+    const g = parseInt(hexColor.substr(3, 2), 16);
+    const b = parseInt(hexColor.substr(5, 2), 16);
+    const brightness = (r * 299 + g * 587 + b * 114) / 1000;
+    return brightness > 128 ? '#000000' : '#FFFFFF';
   };
 
   return (
@@ -40,7 +84,15 @@ const LogTableRow = ({ log, onClick }) => {
         {log.Message}
       </TableCell>
       <TableCell>
-        {getLevelBadge(log.Level)}
+        <div className="flex items-center gap-2">
+          {getLevelBadge(log.Level)}
+          {!showBasic && !DEFAULT_LEVEL_COLORS[log.Level] && (
+            <ColorPicker 
+              color={customColors[log.Level]} 
+              onColorChange={(color) => onColorChange(log.Level, color)}
+            />
+          )}
+        </div>
       </TableCell>
       <TableCell>
         {log.Context?.userId ? (
@@ -54,16 +106,107 @@ const LogTableRow = ({ log, onClick }) => {
   );
 };
 
+const ColorPicker = ({ color, onColorChange }) => {
+  const [currentColor, setCurrentColor] = useState(color || '#000000');
+
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <Button variant="ghost" size="icon" className="h-6 w-6 p-1">
+          <Palette size={14} className="text-gray-500 hover:text-gray-700" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-fit p-3 space-y-2">
+        <HexColorPicker 
+          color={currentColor} 
+          onChange={setCurrentColor}
+        />
+        <div className="flex items-center gap-2">
+          <Input 
+            value={currentColor}
+            onChange={(e) => setCurrentColor(e.target.value)}
+            className="h-8 w-24"
+          />
+          <Button 
+            size="sm"
+            onClick={() => onColorChange(currentColor)}
+          >
+            Apply
+          </Button>
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+};
+
 export default function LogTable({ logs, onLogSelect }) {
   const [currentPage, setCurrentPage] = useState(1);
+  const [customColors, setCustomColors] = useState({});
+  const [showBasic, setShowBasic] = useState(false);
   const logsPerPage = 10;
   const totalPages = Math.ceil(logs.length / logsPerPage);
   
   const startIndex = (currentPage - 1) * logsPerPage;
   const displayedLogs = logs.slice(startIndex, startIndex + logsPerPage);
-  
+
+  // Fetch custom colors from backend on component mount
+  useEffect(() => {
+    const fetchCustomColors = async () => {
+      try {
+        const response = await fetch('/api/logs/colors');
+        if (response.ok) {
+          const colors = await response.json();
+          setCustomColors(colors);
+        }
+      } catch (error) {
+        console.error('Failed to fetch custom colors:', error);
+      }
+    };
+    
+    fetchCustomColors();
+  }, []);
+
+  const handleColorChange = async (level, color) => {
+    const newColors = { ...customColors, [level]: color };
+    setCustomColors(newColors);
+    
+    // Update backend with new colors
+    try {
+      await fetch('/api/logs/colors', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(newColors),
+      });
+    } catch (error) {
+      console.error('Failed to save custom colors:', error);
+    }
+  };
+
   return (
     <div className="space-y-4">
+      <div className="flex justify-end">
+        <Button 
+          variant="ghost" 
+          size="sm"
+          onClick={() => setShowBasic(!showBasic)}
+          className="flex items-center gap-1"
+        >
+          {showBasic ? (
+            <>
+              <Palette size={14} />
+              <span>Show Custom Colors</span>
+            </>
+          ) : (
+            <>
+              <X size={14} />
+              <span>Show Basic</span>
+            </>
+          )}
+        </Button>
+      </div>
+      
       <UITable>
         <TableHeader>
           <TableRow>
@@ -78,7 +221,10 @@ export default function LogTable({ logs, onLogSelect }) {
             <LogTableRow 
               key={index} 
               log={log} 
-              onClick={() => onLogSelect(log)} 
+              onClick={() => onLogSelect(log)}
+              customColors={customColors}
+              onColorChange={handleColorChange}
+              showBasic={showBasic}
             />
           ))}
         </TableBody>
