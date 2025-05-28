@@ -78,22 +78,6 @@ export default function SearchFilters({ onSearch, onFilter, dateRange, setDateRa
           </div>
           
           <div className="space-y-1">
-            <label className="text-xs font-medium">User ID</label>
-            <Select 
-              onValueChange={value => handleFilterChange("userId", value)}
-              value={filters.userId}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Select user" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="abc123">abc123</SelectItem>
-                <SelectItem value="def456">def456</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          
-          <div className="space-y-1">
             <label className="text-xs font-medium">Date Range</label>
             <CalendarDateRangePicker 
               date={dateRange}

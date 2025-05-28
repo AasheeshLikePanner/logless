@@ -1,66 +1,122 @@
 import { useState, useEffect } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Eye, BarChart3, Table } from "lucide-react";
+import { Eye, BarChart3, Table, ChevronLeft, ChevronRight } from "lucide-react";
 import CalendarDateRangePicker from "./CalendarDateRangePicker";
 import LogTable from "./LogTable";
 import SearchFilters from "./SearchFilters";
 import LogsPerTimeChart from "./Charts/LogsPerTimeChart";
 import LogsByLevelChart from "./Charts/LogsByLevelChart";
 import LogsByUserChart from "./Charts/LogsByUserChart";
-import { getAllLogs, getSearchLogs } from "@/apis/api";
+import { getAllLogs, getCustomColors, getSearchLogs } from "@/apis/api";
+import { Button } from "@/components/ui/button";
 
 export default function LogManagementSystem() {
-  const [logs, setLogs] = useState([]);
+  const [logsData, setLogsData] = useState({
+    data: [],
+    page: 1,
+    pageSize: 10,
+    totalCount: 0,
+    totalPages: 1
+  });
   const [filteredLogs, setFilteredLogs] = useState([]);
   const [selectedLog, setSelectedLog] = useState(null);
   const [activeTab, setActiveTab] = useState("table");
   const [isLoading, setIsLoading] = useState(true);
   const [dateRange, setDateRange] = useState();
+  const [fetchedCustomColors, setFetchedCustomColors] = useState({});
+  const [searchTerm, setSearchTerm] = useState("");
+
+  // Decode base64 logs and parse JSON
+  const decodeLogs = (encodedLogs) => {
+    return encodedLogs.map(log => {
+      try {
+        const decoded = atob(log);
+        return JSON.parse(decoded);
+      } catch (error) {
+        console.error("Error decoding log:", error);
+        return null;
+      }
+    }).filter(log => log !== null);
+  };
 
   useEffect(() => {
     const fetchData = async () => {
       try {
         setIsLoading(true);
-        const response = await getAllLogs();
+        const response = await getAllLogs(logsData.page, logsData.pageSize);
         console.log("Response from API:", response);
-        setLogs(response);
-        setFilteredLogs(response);
+        
+        setLogsData({
+          data: response.data,
+          page: response.page,
+          pageSize: response.pageSize,
+          totalCount: response.totalCount,
+          totalPages: response.totalPages
+        });
+        
+        setFilteredLogs(decodeLogs(response.data));
       } catch (error) {
         console.error("Failed to fetch logs:", error);
       } finally {
         setIsLoading(false);
       }
     };
-    
+
+    const fetchCustomColors = async () => {
+      try {
+        const response = await getCustomColors();
+        setFetchedCustomColors(response);
+      } catch (error) {
+        console.error("Failed to fetch custom colors:", error);
+      }
+    };
+
+    fetchCustomColors();
     fetchData();
-  }, []);
+  }, [logsData.page, logsData.pageSize]);
 
   const handleSearch = async (term) => {
+    setSearchTerm(term);
+    
     if (!term.trim()) {
-      setFilteredLogs(logs);
+      // If search term is empty, reset to showing all logs
+      const response = await getAllLogs(1, logsData.pageSize);
+      setLogsData({
+        data: response.data,
+        page: 1,
+        pageSize: logsData.pageSize,
+        totalCount: response.totalCount,
+        totalPages: response.totalPages
+      });
+      setFilteredLogs(decodeLogs(response.data));
       return;
     }
     
-    const filtered = logs.filter(log => 
-      log.Message.toLowerCase().includes(term.toLowerCase()) ||
-      (log.Context?.userId && log.Context.userId.toLowerCase().includes(term.toLowerCase()))
-    );
-
-    term = term.replaceAll(" ", " | ")
-    const response  = await getSearchLogs(term.toLowerCase());
-    console.log("Response from API:", response);
-    const data = response.map(log => ({
-      ...JSON.parse(atob(log))
-    }))
-    console.log("Fetched logs:", data);
-    setFilteredLogs(data)
+    try {
+      setIsLoading(true);
+      const processedTerm = term.replaceAll(" ", " | ");
+      const response = await getSearchLogs(processedTerm.toLowerCase());
+      setFilteredLogs(decodeLogs(response));
+      
+      // Reset pagination data for search results
+      setLogsData(prev => ({
+        ...prev,
+        page: 1,
+        totalCount: response.length,
+        totalPages: Math.ceil(response.length / prev.pageSize)
+      }));
+    } catch (error) {
+      console.error("Search failed:", error);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
-  const handleFilter = async (filters) => {
-    let filtered = [...logs];
+  const handleFilter = (filters) => {
+    let filtered = decodeLogs(logsData.data);
     
     if (filters.logLevel) {
-      filtered = filtered.filter(log => log.LogLevel === filters.logLevel);
+      filtered = filtered.filter(log => log.Level === filters.logLevel);
     }
     
     if (filters.userId) {
@@ -79,6 +135,16 @@ export default function LogManagementSystem() {
     }
     
     setFilteredLogs(filtered);
+  };
+
+  const handlePageChange = (newPage) => {
+    if (newPage >= 1 && newPage <= logsData.totalPages) {
+      setLogsData(prev => ({ ...prev, page: newPage }));
+    }
+  };
+
+  const handlePageSizeChange = (newSize) => {
+    setLogsData(prev => ({ ...prev, pageSize: newSize, page: 1 }));
   };
 
   return (
@@ -115,7 +181,52 @@ export default function LogManagementSystem() {
                   <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
                 </div>
               ) : (
-                <LogTable logs={filteredLogs} onLogSelect={setSelectedLog} />
+                <>
+                  <LogTable logs={filteredLogs} onLogSelect={setSelectedLog} />
+                  
+                  {/* Pagination Controls */}
+                  <div className="flex items-center justify-between mt-4">
+                    <div className="text-sm text-gray-600">
+                      Showing {filteredLogs.length} of {logsData.totalCount} logs
+                    </div>
+                    
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handlePageChange(logsData.page - 1)}
+                        disabled={logsData.page === 1}
+                      >
+                        <ChevronLeft size={16} />
+                      </Button>
+                      
+                      <span className="text-sm">
+                        Page {logsData.page} of {logsData.totalPages}
+                      </span>
+                      
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handlePageChange(logsData.page + 1)}
+                        disabled={logsData.page >= logsData.totalPages}
+                      >
+                        <ChevronRight size={16} />
+                      </Button>
+                      
+                      <select
+                        value={logsData.pageSize}
+                        onChange={(e) => handlePageSizeChange(Number(e.target.value))}
+                        className="border rounded-md px-2 py-1 text-sm"
+                      >
+                        {[10, 20, 50, 100].map(size => (
+                          <option key={size} value={size}>
+                            {size} per page
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                </>
               )}
             </div>
             <div>
@@ -141,9 +252,9 @@ export default function LogManagementSystem() {
         <TabsContent value="analytics" className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <LogsPerTimeChart logs={filteredLogs} />
-            <LogsByLevelChart logs={filteredLogs} />
+            <LogsByLevelChart logs={filteredLogs} customColors={fetchedCustomColors} />
           </div>
-          <LogsByUserChart logs={filteredLogs} />
+          <LogsByUserChart customColors={fetchedCustomColors || {}} logs={filteredLogs} />
         </TabsContent>
       </Tabs>
     </div>

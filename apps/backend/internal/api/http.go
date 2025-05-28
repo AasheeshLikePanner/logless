@@ -2,188 +2,138 @@ package api
 
 import (
 	"encoding/json"
-	"log"
 	"net/http"
+	"strconv"
 
 	"github.com/aasheesh/logless/internal/domain"
-	"github.com/aasheesh/logless/internal/model"
+	"github.com/aasheesh/logless/internal/models"
 	"github.com/gorilla/mux"
 )
 
 type LogHandler struct {
-	Processor *domain.Processor
+	service *domain.LogService
 }
 
-func NewLogHandler(processor *domain.Processor) *LogHandler {
-	return &LogHandler{Processor: processor}
+func NewLogHandler(service *domain.LogService) *LogHandler {
+	return &LogHandler{service: service}
 }
 
-func (h *LogHandler) HttpLogHandler(w http.ResponseWriter, r *http.Request) {
+func (h *LogHandler) LogHandler(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
 
-	if r.Method != http.MethodPost {
-		http.Error(w, "Invalid request method", http.StatusMethodNotAllowed)
+	var entry models.LogEntry
+	if err := json.NewDecoder(r.Body).Decode(&entry); err != nil {
+		respondWithError(w, http.StatusBadRequest, "invalid request payload")
 		return
 	}
 
-	var logData model.LogEntry
-	if err := json.NewDecoder(r.Body).Decode(&logData); err != nil {
-		http.Error(w, "Failed to decode JSON", http.StatusBadRequest)
-		log.Printf("Failed to decode JSON: %v", err)
-		return
-	}
-	log.Printf("Received log: %s", logData)
-	if err := h.Processor.ProcessLog(logData); err != nil {
-		http.Error(w, "Failed to process log", http.StatusInternalServerError)
-		log.Printf("Failed to process log: %v", err)
+	if err := h.service.ProcessLog(ctx, entry); err != nil {
+		respondWithError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
-	log.Printf("[HTTP] %s: %s", logData.Level, logData.Message)
-	w.WriteHeader(http.StatusOK)
-	w.Write([]byte("Log stored successfully"))
+	respondWithJSON(w, http.StatusCreated, map[string]string{"message": "log stored successfully"})
 }
 
-func HealthCheckHandler(w http.ResponseWriter, r *http.Request) {
-	w.WriteHeader(http.StatusOK)
-	w.Write([]byte("OK"))
-}
+func (h *LogHandler) GetPaginatedLogs(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
 
-func (h *LogHandler) HttpGetAllLogs(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "Invalid request method", http.StatusMethodNotAllowed)
-		return
+	page, err := strconv.Atoi(r.URL.Query().Get("page"))
+	if err != nil || page < 1 {
+		page = 1
 	}
- 
-	logs, err := h.Processor.GetAllLogs()
+
+	pageSize, err := strconv.Atoi(r.URL.Query().Get("pageSize"))
+	if err != nil || pageSize < 1 {
+		pageSize = 10
+	}
+
+	response, err := h.service.GetPaginatedLogs(ctx, page, pageSize)
 	if err != nil {
-		http.Error(w, "Failed to retrieve logs", http.StatusInternalServerError)
-		log.Printf("Failed to retrieve logs: %v", err)
+		respondWithError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
-	// Convert the array of JSON bytes into a single JSON array
-	var logEntries []json.RawMessage
-	for _, logBytes := range logs {
-		logEntries = append(logEntries, logBytes)
-	}
-	
-	jsonResponse, err := json.Marshal(logEntries)
-	if err != nil {
-		http.Error(w, "Failed to encode logs", http.StatusInternalServerError)
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	w.Write(jsonResponse)
+	respondWithJSON(w, http.StatusOK, response)
 }
 
-func (h *LogHandler) HttpGetLevelLogs(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "Invalid request method", http.StatusMethodNotAllowed)
-		return
-	}
-
+func (h *LogHandler) GetLevelLogs(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
 	vars := mux.Vars(r)
 	level := vars["level"]
 
-	if level == "" {
-		http.Error(w, "Missing level parameter", http.StatusBadRequest)
-		return
-	}
-	logs, err := h.Processor.GetLevelLogs(level)
+	logs, err := h.service.GetLevelLogs(ctx, level)
 	if err != nil {
-		http.Error(w, "Failed to retrieve logs", http.StatusInternalServerError)
-		log.Printf("Failed to retrieve logs: %v", err)
+		respondWithError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	jsonLogs, err := json.Marshal(logs)
-	if err != nil {
-		http.Error(w, "Failed to encode logs", http.StatusInternalServerError)
-		return
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	w.Write(jsonLogs)
+
+	respondWithJSON(w, http.StatusOK, logs)
 }
 
-func (h *LogHandler) HttpGetSearchLogs(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "Invalid request method", http.StatusMethodNotAllowed)
-		return
-	}
-
-	// Get variables from the URL path using mux
+func (h *LogHandler) GetSearchLogs(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
 	vars := mux.Vars(r)
-	searchTerm := vars["rest"] // Get the rest of the path as search term
+	searchTerm := vars["rest"]
 
-	if searchTerm == "" {
-		http.Error(w, "Missing search term in URL", http.StatusBadRequest)
+	logs, err := h.service.GetSearchLogs(ctx, searchTerm)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
-	logs, err := h.Processor.GetSearchLogs(searchTerm)
-	if err != nil {
-		http.Error(w, "Failed to retrieve logs", http.StatusInternalServerError)
-		log.Printf("Failed to retrieve logs: %v", err)
-		return
-	}
-	jsonLogs, err := json.Marshal(logs)
-	if err != nil {
-		http.Error(w, "Failed to encode logs", http.StatusInternalServerError)
-		return
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	w.Write(jsonLogs)
+	respondWithJSON(w, http.StatusOK, logs)
 }
 
-func (h *LogHandler) HttpSetLevelColors(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "Invalid request method", http.StatusMethodNotAllowed)
-		return
-	}
-
-	var levelColors model.ColorEntry
-	if err := json.NewDecoder(r.Body).Decode(&levelColors); err != nil {
-		http.Error(w, "Failed to decode JSON", http.StatusBadRequest)
-		log.Printf("Failed to decode JSON: %v", err)
-		return
-	}
+func (h *LogHandler) SetLevelColors(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
 	vars := mux.Vars(r)
-	level := vars["level"] 
-	log.Println(level);
-	if err := h.Processor.SetLevelColors(level, levelColors.Color); err != nil {
-		http.Error(w, "Failed to set level colors", http.StatusInternalServerError)
-		log.Printf("Failed to set level colors: %v", err)
+	level := vars["level"]
+
+	var colorEntry models.ColorEntry
+	if err := json.NewDecoder(r.Body).Decode(&colorEntry); err != nil {
+		respondWithError(w, http.StatusBadRequest, "invalid request payload")
 		return
 	}
 
-	w.WriteHeader(http.StatusOK)
-	w.Write([]byte("Level colors set successfully"))
+	if err := h.service.SetLevelColors(ctx, level, colorEntry.Color); err != nil {
+		respondWithError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	respondWithJSON(w, http.StatusOK, map[string]string{"message": "level color updated successfully"})
 }
 
-func (h *LogHandler) HttpGetLevelColors(w http.ResponseWriter, r *http.Request) {
-	log.Println('1')
-	if r.Method != http.MethodGet {
-		http.Error(w, "Invalid request method", http.StatusMethodNotAllowed)
-		return
-	}
+func (h *LogHandler) GetLevelColors(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
 
-	colors, err := h.Processor.GetLevelColors()
+	colors, err := h.service.GetLevelColors(ctx)
 	if err != nil {
-		http.Error(w, "Failed to retrieve level colors", http.StatusInternalServerError)
-		log.Printf("Failed to retrieve level colors: %v", err)
+		respondWithError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
-	jsonColors, err := json.Marshal(colors)
+	respondWithJSON(w, http.StatusOK, colors)
+}
+
+func (h *LogHandler) HealthCheck(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	health, err := h.service.HealthCheck(ctx)
 	if err != nil {
-		http.Error(w, "Failed to encode level colors", http.StatusInternalServerError)
+		respondWithError(w, http.StatusServiceUnavailable, err.Error())
 		return
 	}
 
+	respondWithJSON(w, http.StatusOK, health)
+}
+
+func respondWithError(w http.ResponseWriter, code int, message string) {
+	respondWithJSON(w, code, map[string]string{"error": message})
+}
+
+func respondWithJSON(w http.ResponseWriter, code int, payload interface{}) {
 	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	w.Write(jsonColors)
+	w.WriteHeader(code)
+	json.NewEncoder(w).Encode(payload)
 }
