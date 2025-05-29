@@ -11,7 +11,9 @@ import (
 
 	"github.com/aasheesh/logless/internal/api"
 	"github.com/aasheesh/logless/internal/domain"
+	producer "github.com/aasheesh/logless/internal/kafka"
 	"github.com/aasheesh/logless/internal/storage"
+	"github.com/confluentinc/confluent-kafka-go/kafka"
 	"github.com/gorilla/mux"
 )
 
@@ -22,11 +24,33 @@ func main() {
 		log.Fatalf("Failed to initialize storage: %v", err)
 	}
 
+	var producerConfigMap *kafka.ConfigMap = &kafka.ConfigMap{
+		"bootstrap.servers": "localhost:9092",
+		"client.id":         "my-go-async-producer",
+		"acks":              "all",
+	}
+
+	p, err := kafka.NewProducer(producerConfigMap)
+
+	if err != nil {
+		// log.Fatalf prints a fatal error and exits the program.
+		log.Fatalf("Failed to create producer: %v", err)
+	}
+
+	defer func() {
+		log.Println("Flushing producer outstanding messages...")
+		remaining := p.Flush(10 * 1000)
+		log.Printf("Flushed %d outstanding messages.", remaining)
+		p.Close()
+	}()
+
 	// Initialize service
 	service := domain.NewLogService(storage)
 
+	producer := producer.NewLogProducer(p)
+
 	// Initialize API handlers
-	handler := api.NewLogHandler(service)
+	handler := api.NewLogHandler(service, producer)
 
 	// Router setup
 	router := mux.NewRouter()
@@ -55,7 +79,7 @@ func main() {
 	go func() {
 		<-quit
 		log.Println("Server is shutting down...")
-		
+
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 

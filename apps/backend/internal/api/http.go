@@ -6,20 +6,22 @@ import (
 	"strconv"
 
 	"github.com/aasheesh/logless/internal/domain"
+	producer "github.com/aasheesh/logless/internal/kafka"
 	"github.com/aasheesh/logless/internal/models"
 	"github.com/gorilla/mux"
 )
 
 type LogHandler struct {
 	service *domain.LogService
+	producer *producer.LogProducer
 }
 
-func NewLogHandler(service *domain.LogService) *LogHandler {
-	return &LogHandler{service: service}
+func NewLogHandler(service *domain.LogService, producer *producer.LogProducer) *LogHandler {
+	return &LogHandler{service: service, producer: producer}
 }
 
 func (h *LogHandler) LogHandler(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
+	// ctx := r.Context()
 
 	var entry models.LogEntry
 	if err := json.NewDecoder(r.Body).Decode(&entry); err != nil {
@@ -27,9 +29,8 @@ func (h *LogHandler) LogHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.service.ProcessLog(ctx, entry); err != nil {
-		respondWithError(w, http.StatusInternalServerError, err.Error())
-		return
+	if err:= h.producer.SendLog(entry); err != nil{
+		respondWithError(w,http.StatusInternalServerError, "failed to send log to Kafka")
 	}
 
 	respondWithJSON(w, http.StatusCreated, map[string]string{"message": "log stored successfully"})
