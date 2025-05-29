@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"time"
 
 	"github.com/aasheesh/logless/internal/domain"
 	"github.com/aasheesh/logless/internal/models"
@@ -21,6 +22,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to initialize storage: %v", err)
 	}
+	
 	service := domain.NewLogService(storage)
 
 	consumer, err := kafka.NewConsumer(&kafka.ConfigMap{
@@ -36,9 +38,17 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to subscribe topic: %v", err)
 	}
-	
+
 	run := true
-	ctx := context.Background();
+	ctx := context.Background()
+
+	var (
+		batch         []models.LogEntry
+		lastFlushTime = time.Now()
+		flushInterval = 2 * time.Second
+		batchSize     = 20
+	)
+
 	for run {
 		ev := consumer.Poll(100)
 		switch e := ev.(type) {
@@ -46,14 +56,20 @@ func main() {
 			fmt.Printf("%% Message on %s:\n%s\n",
 				e.TopicPartition, string(e.Value))
 			var logEntry models.LogEntry
-            err := json.Unmarshal(e.Value, &logEntry) 
+			err := json.Unmarshal(e.Value, &logEntry)
 			if err != nil {
-                log.Printf("Error unmarshaling log entry: %v, Raw message: %s", err, string(e.Value))
-                continue
-            }
-			err = service.ProcessLog(ctx, logEntry);
-			if err != nil {
-				log.Printf("Error while processing log entry: %s", err);
+				log.Printf("Error unmarshaling log entry: %v, Raw message: %s", err, string(e.Value))
+				continue
+			}
+
+			batch = append(batch, logEntry)
+
+			if len(batch) >= batchSize || time.Since(lastFlushTime) > flushInterval {
+				if err := service.ProcessLogs(ctx, batch); err != nil {
+					log.Printf("Failed to process batch: %v", err)
+				}
+				batch = nil
+				lastFlushTime = time.Now()
 			}
 		case kafka.Error:
 			fmt.Fprintf(os.Stderr, "%% Error: %v\n", e)

@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"math"
 	"time"
 
@@ -22,34 +23,41 @@ func NewLogService(storage storage.LogStorage) *LogService {
 	return &LogService{storage: storage}
 }
 
-func (s *LogService) ProcessLog(ctx context.Context, entry models.LogEntry) error {
-	if entry.Message == "" {
-		return errors.New("log message cannot be empty")
-	}
+func (s *LogService) ProcessLogs(ctx context.Context, entries []models.LogEntry) error {
+    var (
+        levels      []string
+        compresseds [][]byte
+        jsons       []string
+    )
 
-	if entry.Level == "" {
-		entry.Level = "info"
-	}
+    for _, entry := range entries {
+        if entry.Level == "" {
+            entry.Level = "info"
+        }
+        if entry.Timestamp.IsZero() {
+            entry.Timestamp = time.Now()
+        }
 
-	if entry.Timestamp.IsZero() {
-		entry.Timestamp = time.Now()
-	}
+        data, err := json.Marshal(entry)
+        if err != nil {
+            log.Printf("Marshal error: %v", err)
+            continue
+        }
 
-	data, err := json.Marshal(entry)
-	if err != nil {
-		return fmt.Errorf("failed to marshal log entry: %w", err)
-	}
+        var compressed bytes.Buffer
+        gz := gzip.NewWriter(&compressed)
+        if _, err := gz.Write(data); err != nil {
+            log.Printf("Compression error: %v", err)
+            continue
+        }
+        gz.Close()
 
-	var compressed bytes.Buffer
-	gz := gzip.NewWriter(&compressed)
-	if _, err := gz.Write(data); err != nil {
-		return fmt.Errorf("failed to compress data: %w", err)
-	}
-	if err := gz.Close(); err != nil {
-		return fmt.Errorf("failed to close gzip writer: %w", err)
-	}
+        levels = append(levels, entry.Level)
+        compresseds = append(compresseds, compressed.Bytes())
+        jsons = append(jsons, string(data))
+    }
 
-	return s.storage.SaveLog(ctx, entry.Level, compressed.Bytes(), data)
+    return s.storage.SaveLog(ctx, levels, compresseds, jsons)
 }
 
 func (s *LogService) GetPaginatedLogs(ctx context.Context, page, pageSize int) (*models.PaginatedLogsResponse, error) {

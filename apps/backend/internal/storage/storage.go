@@ -4,11 +4,12 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type LogStorage interface {
-	SaveLog(ctx context.Context, level string, data []byte, jsonData []byte) error
+	SaveLog(ctx context.Context, level []string, data [][]byte, jsons []string) error
 	GetLevelLogs(ctx context.Context, level string) ([][]byte, error)
 	GetPaginatedLogs(ctx context.Context, limit, offset int) ([][]byte, error)
 	GetSearchLogs(ctx context.Context, searchTerm string) ([][]byte, error)
@@ -34,14 +35,23 @@ func NewPostgresStorage(connStr string) (*PostgresStorage, error) {
 	return &PostgresStorage{db: db}, nil
 }
 
-func (s *PostgresStorage) SaveLog(ctx context.Context, level string, data []byte, jsonData []byte) error {
-	_, err := s.db.Exec(ctx,
-		`INSERT INTO logs (level, compressed_data, log_text) VALUES ($1, $2, to_tsvector($3))`,
-		level, data, string(jsonData))
-	if err != nil {
-		return fmt.Errorf("failed to save log: %w", err)
-	}
-	return nil
+func (s *PostgresStorage) SaveLog(ctx context.Context, levels []string, datas [][]byte, jsons []string) error {
+	 batch := &pgx.Batch{};
+    for i := range levels {
+        batch.Queue(`INSERT INTO logs (level, compressed_data, log_text) VALUES ($1, $2, to_tsvector($3))`,
+            levels[i], datas[i], jsons[i])
+    }
+
+    br := s.db.SendBatch(ctx, batch)
+    defer br.Close()
+
+    for i := 0; i < len(levels); i++ {
+        _, err := br.Exec()
+        if err != nil {
+            return fmt.Errorf("failed batch insert at item %d: %w", i, err)
+        }
+    }
+    return nil
 }
 
 func (s *PostgresStorage) GetLevelLogs(ctx context.Context, level string) ([][]byte, error) {

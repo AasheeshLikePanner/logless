@@ -42,7 +42,7 @@ func main() {
 		remaining := p.Flush(10 * 1000)
 		log.Printf("Flushed %d outstanding messages.", remaining)
 		p.Close()
-	}()
+	}() 
 
 	// Initialize service
 	service := domain.NewLogService(storage)
