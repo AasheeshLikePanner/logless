@@ -8,12 +8,16 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import { useState } from "react";
 
 export default function CalendarDateRangePicker({
   className,
   date,
   setDate,
+  onApply,
 }) {
+  const [localDateRange, setLocalDateRange] = useState(date);
+
   return (
     <div className={cn("grid gap-2", className)}>
       <Popover>
@@ -45,11 +49,23 @@ export default function CalendarDateRangePicker({
           <Calendar
             initialFocus
             mode="range"
-            defaultMonth={date?.from}
-            selected={date}
-            onSelect={setDate}
+            defaultMonth={localDateRange?.from}
+            selected={localDateRange}
+            onSelect={setLocalDateRange}
             numberOfMonths={2}
           />
+          <div className="p-2 border-t flex justify-end">
+            <Button
+              size="sm"
+              onClick={() => {
+                setDate(localDateRange);
+                onApply?.();
+              }}
+              disabled={!localDateRange?.from || !localDateRange?.to}
+            >
+              Apply
+            </Button>
+          </div>
         </PopoverContent>
       </Popover>
     </div>

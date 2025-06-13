@@ -90,6 +90,36 @@ func (s *LogService) GetPaginatedLogs(ctx context.Context, page, pageSize int) (
 	}, nil
 }
 
+func (s *LogService) GetDateRangeLogs(ctx context.Context, startDate, endDate time.Time, page, pageSize int) (*models.PaginatedLogsResponse, error){
+	 if endDate.Before(startDate) {
+        return nil, errors.New("end date cannot be before start date")
+    }
+    
+    offset := (page - 1) * pageSize
+    compressedLogs, err := s.storage.GetDateRangeLogs(ctx, startDate, endDate, pageSize, offset)
+    if err != nil {
+        return nil, fmt.Errorf("failed to get date range logs: %w", err)
+    }
+    
+    logs, err := s.decompressLogs(compressedLogs)
+    if err != nil {
+        return nil, fmt.Errorf("failed to decompress logs: %w", err)
+    }
+    
+    totalCount, err := s.storage.GetDateRangeLogsCount(ctx, startDate, endDate)
+    if err != nil {
+        return nil, fmt.Errorf("failed to get date range logs count: %w", err)
+    }
+    
+    return &models.PaginatedLogsResponse{
+        Data:       logs,
+        Page:       page,
+        PageSize:   pageSize,
+        TotalCount: totalCount,
+        TotalPages: int(math.Ceil(float64(totalCount) / float64(pageSize))),
+    }, nil
+}
+
 func (s *LogService) GetLevelLogs(ctx context.Context, level string) ([][]byte, error) {
 	if level == "" {
 		return nil, errors.New("level cannot be empty")

@@ -4,14 +4,14 @@ import _ from "lodash";
 
 export default function LogsPerTimeChart({ logs }) {
   const logsByHour = _.groupBy(logs, log => {
-    const date = new Date(log.TimeStamp);
+    const date = new Date(log.timestamp);
     return `${date.getMonth() + 1}/${date.getDate()} ${date.getHours()}:00`;
   });
   
   const chartData = Object.entries(logsByHour).map(([hour, logs]) => ({
     hour,
     count: logs.length,
-    errors: logs.filter(log => log.Level === 'error').length
+    errors: logs.filter(log => log.level === 'error').length
   }));
   
   return (

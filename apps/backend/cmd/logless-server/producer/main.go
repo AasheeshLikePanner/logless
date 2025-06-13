@@ -61,6 +61,7 @@ func main() {
 	router.Handle("/api/logs/level/colors/{level}", http.HandlerFunc(handler.SetLevelColors)).Methods("POST")
 	router.Handle("/api/logs/level/{level}", http.HandlerFunc(handler.GetLevelLogs)).Methods("GET")
 	router.Handle("/api/logs/search/{rest:.*}", http.HandlerFunc(handler.GetSearchLogs)).Methods("GET")
+	router.Handle("/api/logs/by-date", http.HandlerFunc(handler.GetDateLogs)).Methods("GET")
 
 	// Server setup
 	server := &http.Server{

@@ -3,6 +3,7 @@ package storage
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -16,6 +17,8 @@ type LogStorage interface {
 	SetLevelColors(ctx context.Context, level, color string) error
 	GetLevelColors(ctx context.Context) (map[string]string, error)
 	GetLogsCount(ctx context.Context) (int, error)
+	GetDateRangeLogs(ctx context.Context, startDate, endDate time.Time, limit, offset int) ([][]byte, error) 
+	GetDateRangeLogsCount(ctx context.Context, startDate, endDate time.Time) (int, error)
 }
 
 type PostgresStorage struct {
@@ -36,27 +39,27 @@ func NewPostgresStorage(connStr string) (*PostgresStorage, error) {
 }
 
 func (s *PostgresStorage) SaveLog(ctx context.Context, levels []string, datas [][]byte, jsons []string) error {
-	 batch := &pgx.Batch{};
-    for i := range levels {
-        batch.Queue(`INSERT INTO logs (level, compressed_data, log_text) VALUES ($1, $2, to_tsvector($3))`,
-            levels[i], datas[i], jsons[i])
-    }
+	batch := &pgx.Batch{}
+	for i := range levels {
+		batch.Queue(`INSERT INTO logs (level, compressed_data, log_text) VALUES ($1, $2, to_tsvector($3))`,
+			levels[i], datas[i], jsons[i])
+	}
 
-    br := s.db.SendBatch(ctx, batch)
-    defer br.Close()
+	br := s.db.SendBatch(ctx, batch)
+	defer br.Close()
 
-    for i := 0; i < len(levels); i++ {
-        _, err := br.Exec()
-        if err != nil {
-            return fmt.Errorf("failed batch insert at item %d: %w", i, err)
-        }
-    }
-    return nil
+	for i := 0; i < len(levels); i++ {
+		_, err := br.Exec()
+		if err != nil {
+			return fmt.Errorf("failed batch insert at item %d: %w", i, err)
+		}
+	}
+	return nil
 }
 
 func (s *PostgresStorage) GetLevelLogs(ctx context.Context, level string) ([][]byte, error) {
 	rows, err := s.db.Query(ctx,
-		"SELECT compressed_data FROM logs WHERE level = $1 ORDER BY timestamp DESC", level)
+		"SELECT compressed_data FROM logs WHERE level = $1 ORDER BY created_At DESC", level)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get level logs: %w", err)
 	}
@@ -71,6 +74,41 @@ func (s *PostgresStorage) GetLevelLogs(ctx context.Context, level string) ([][]b
 		logs = append(logs, data)
 	}
 	return logs, rows.Err()
+}
+
+func (s *PostgresStorage) GetDateRangeLogs(ctx context.Context, startDate, endDate time.Time, limit, offset int) ([][]byte, error) {
+	rows, err := s.db.Query(ctx,
+		`SELECT compressed_data FROM logs 
+         WHERE created_at BETWEEN $1 AND $2 
+         ORDER BY created_at DESC
+         LIMIT $3 OFFSET $4`,
+		startDate, endDate, limit, offset)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get date range logs: %w", err)
+	}
+	defer rows.Close()
+
+	var logs [][]byte
+	for rows.Next() {
+		var data []byte
+		if err := rows.Scan(&data); err != nil {
+			return nil, fmt.Errorf("failed to scan row: %w", err)
+		}
+		logs = append(logs, data)
+	}
+	return logs, rows.Err()
+}
+
+func (s *PostgresStorage) GetDateRangeLogsCount(ctx context.Context, startDate, endDate time.Time) (int, error) {
+	var count int
+	err := s.db.QueryRow(ctx,
+		`SELECT COUNT(*) FROM logs 
+         WHERE created_at BETWEEN $1 AND $2`,
+		startDate, endDate).Scan(&count)
+	if err != nil {
+		return 0, fmt.Errorf("failed to get date range logs count: %w", err)
+	}
+	return count, nil
 }
 
 func (s *PostgresStorage) GetPaginatedLogs(ctx context.Context, limit, offset int) ([][]byte, error) {
@@ -95,7 +133,7 @@ func (s *PostgresStorage) GetPaginatedLogs(ctx context.Context, limit, offset in
 
 func (s *PostgresStorage) GetSearchLogs(ctx context.Context, searchTerm string) ([][]byte, error) {
 	rows, err := s.db.Query(ctx,
-		"SELECT compressed_data FROM logs WHERE log_text @@ to_tsquery($1) ORDER BY timestamp DESC",
+		"SELECT compressed_data FROM logs WHERE log_text @@ to_tsquery($1) ORDER BY created_at DESC",
 		searchTerm)
 	if err != nil {
 		return nil, fmt.Errorf("failed to search logs: %w", err)

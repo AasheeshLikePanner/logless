@@ -3,7 +3,7 @@ import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Toolti
 import _ from "lodash";
 
 export default function LogsByUserChart({ logs }) {
-  const logsByUser = _.groupBy(logs, log => log.Context?.userId || 'unknown');
+  const logsByUser = _.groupBy(logs, log => log.context?.userId || 'unknown');
   
   const chartData = Object.entries(logsByUser).map(([userId, logs]) => ({
     userId: userId === 'unknown' ? 'No User' : userId,

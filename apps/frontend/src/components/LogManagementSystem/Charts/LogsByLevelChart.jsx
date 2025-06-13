@@ -13,7 +13,7 @@ const DEFAULT_LEVEL_COLORS = {
 };
 
 export default function LogsByLevelChart({ logs, customColors = {}, showBasic = false }) {
-  const logsByLevel = _.groupBy(logs, 'Level');
+  const logsByLevel = _.groupBy(logs, 'level');
   
   // Create chart data with color information for each level
   const chartData = Object.entries(logsByLevel).map(([level, logs]) => ({

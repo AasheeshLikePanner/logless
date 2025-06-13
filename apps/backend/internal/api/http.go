@@ -2,8 +2,10 @@ package api
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/aasheesh/logless/internal/domain"
 	producer "github.com/aasheesh/logless/internal/kafka"
@@ -12,7 +14,7 @@ import (
 )
 
 type LogHandler struct {
-	service *domain.LogService
+	service  *domain.LogService
 	producer *producer.LogProducer
 }
 
@@ -29,8 +31,8 @@ func (h *LogHandler) LogHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err:= h.producer.SendLog(entry); err != nil{
-		respondWithError(w,http.StatusInternalServerError, "failed to send log to Kafka")
+	if err := h.producer.SendLog(entry); err != nil {
+		respondWithError(w, http.StatusInternalServerError, "failed to send log to Kafka")
 	}
 
 	respondWithJSON(w, http.StatusCreated, map[string]string{"message": "log stored successfully"})
@@ -115,6 +117,53 @@ func (h *LogHandler) GetLevelColors(w http.ResponseWriter, r *http.Request) {
 	}
 
 	respondWithJSON(w, http.StatusOK, colors)
+}
+
+func (h *LogHandler) GetDateLogs(w http.ResponseWriter, r *http.Request) {
+	query := r.URL.Query()
+
+	page, err := strconv.Atoi(query.Get("page"))
+
+	if err != nil || page < 1 {
+		page = 1
+	}
+	pageSize, err := strconv.Atoi(query.Get("pageSize"))
+	if err != nil || pageSize < 1 {
+		pageSize = 10
+	}
+
+	startDate := query.Get("startDate")
+	endDate := query.Get("endDate")
+
+	if startDate == "" || endDate == "" {
+		http.Error(w, "Both startDate and endDate parameters are required", http.StatusBadRequest)
+		return
+	}
+
+	 startTime, err := time.Parse(time.RFC3339, startDate)
+    if err != nil {
+        http.Error(w, "Invalid startDate format (use RFC3339)", http.StatusBadRequest)
+        return
+    }
+    
+    endTime, err := time.Parse(time.RFC3339, endDate)
+    if err != nil {
+        http.Error(w, "Invalid endDate format (use RFC3339)", http.StatusBadRequest)
+        return
+    }
+    
+    ctx := r.Context()
+    response, err := h.service.GetDateRangeLogs(ctx, startTime, endTime, page, pageSize)
+    if err != nil {
+        http.Error(w, fmt.Sprintf("Error fetching logs: %v", err), http.StatusInternalServerError)
+        return
+    }
+    
+    w.Header().Set("Content-Type", "application/json")
+    if err := json.NewEncoder(w).Encode(response); err != nil {
+        http.Error(w, "Failed to encode response", http.StatusInternalServerError)
+    }
+
 }
 
 func (h *LogHandler) HealthCheck(w http.ResponseWriter, r *http.Request) {

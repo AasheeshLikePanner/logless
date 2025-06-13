@@ -1,14 +1,15 @@
 import { useState, useEffect } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Eye, BarChart3, Table, ChevronLeft, ChevronRight } from "lucide-react";
+import { AlertCircle, Eye, BarChart3, Table, ChevronLeft, ChevronRight } from "lucide-react";
 import CalendarDateRangePicker from "./CalendarDateRangePicker";
 import LogTable from "./LogTable";
 import SearchFilters from "./SearchFilters";
 import LogsPerTimeChart from "./Charts/LogsPerTimeChart";
 import LogsByLevelChart from "./Charts/LogsByLevelChart";
 import LogsByUserChart from "./Charts/LogsByUserChart";
-import { getAllLogs, getCustomColors, getSearchLogs } from "@/apis/api";
+import { getAllLogs, getCustomColors, getLogByLevel, getLogsByDateRange, getSearchLogs } from "@/apis/api";
 import { Button } from "@/components/ui/button";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 export default function LogManagementSystem() {
   const [logsData, setLogsData] = useState({
@@ -25,6 +26,7 @@ export default function LogManagementSystem() {
   const [dateRange, setDateRange] = useState();
   const [fetchedCustomColors, setFetchedCustomColors] = useState({});
   const [searchTerm, setSearchTerm] = useState("");
+  const [serviceHealth, setServiceHealth] = useState({ status: "healthy", message: "" });
 
   // Decode base64 logs and parse JSON
   const decodeLogs = (encodedLogs) => {
@@ -39,13 +41,49 @@ export default function LogManagementSystem() {
     }).filter(log => log !== null);
   };
 
+  // Analyze service health based on logs
+  const analyzeServiceHealth = (logs) => {
+    const levelCounts = logs.reduce((acc, log) => {
+      acc[log.level] = (acc[log.level] || 0) + 1;
+      return acc;
+    }, {});
+
+    const errorCount = levelCounts['error'] || 0;
+    const warningCount = levelCounts['warn'] || 0;
+    const successCount = levelCounts['info'] || 0;
+
+    if (errorCount > successCount) {
+      return {
+        status: "critical",
+        message: `Service is unstable. Errors (${errorCount}) exceed successes (${successCount}). Immediate action required.`
+      };
+    } else if (errorCount + warningCount >= successCount * 0.5) {
+      return {
+        status: "warning",
+        message: `Service may be degrading. Warnings/Errors (${errorCount + warningCount}) are approaching success count (${successCount}).`
+      };
+    }
+
+    return {
+      status: "healthy",
+      message: `Service is operating normally. Successes: ${successCount}, Errors: ${errorCount}, Warnings: ${warningCount}`
+    };
+  };
+
+// Add this useEffect to trigger filtering when dateRange changes
+useEffect(() => {
+  if (dateRange?.from && dateRange?.to) {
+    handleFilter({});
+  }
+}, [dateRange]);
+
   useEffect(() => {
     const fetchData = async () => {
       try {
         setIsLoading(true);
         const response = await getAllLogs(logsData.page, logsData.pageSize);
-        console.log("Response from API:", response);
-        
+        const decodedLogs = decodeLogs(response.data);
+
         setLogsData({
           data: response.data,
           page: response.page,
@@ -53,8 +91,9 @@ export default function LogManagementSystem() {
           totalCount: response.totalCount,
           totalPages: response.totalPages
         });
-        
-        setFilteredLogs(decodeLogs(response.data));
+
+        setFilteredLogs(decodedLogs);
+        setServiceHealth(analyzeServiceHealth(decodedLogs));
       } catch (error) {
         console.error("Failed to fetch logs:", error);
       } finally {
@@ -77,10 +116,11 @@ export default function LogManagementSystem() {
 
   const handleSearch = async (term) => {
     setSearchTerm(term);
-    
+
     if (!term.trim()) {
-      // If search term is empty, reset to showing all logs
       const response = await getAllLogs(1, logsData.pageSize);
+      const decodedLogs = decodeLogs(response.data);
+
       setLogsData({
         data: response.data,
         page: 1,
@@ -88,22 +128,25 @@ export default function LogManagementSystem() {
         totalCount: response.totalCount,
         totalPages: response.totalPages
       });
-      setFilteredLogs(decodeLogs(response.data));
+      setFilteredLogs(decodedLogs);
+      setServiceHealth(analyzeServiceHealth(decodedLogs));
       return;
     }
-    
+
     try {
       setIsLoading(true);
       const processedTerm = term.replaceAll(" ", " | ");
       const response = await getSearchLogs(processedTerm.toLowerCase());
-      setFilteredLogs(decodeLogs(response));
-      
-      // Reset pagination data for search results
+      const decodedLogs = decodeLogs(response);
+
+      setFilteredLogs(decodedLogs);
+      setServiceHealth(analyzeServiceHealth(decodedLogs));
+
       setLogsData(prev => ({
         ...prev,
         page: 1,
-        totalCount: response.length,
-        totalPages: Math.ceil(response.length / prev.pageSize)
+        totalCount: decodedLogs.length,
+        totalPages: Math.ceil(decodedLogs.length / prev.pageSize)
       }));
     } catch (error) {
       console.error("Search failed:", error);
@@ -112,29 +155,43 @@ export default function LogManagementSystem() {
     }
   };
 
-  const handleFilter = (filters) => {
-    let filtered = decodeLogs(logsData.data);
-    
-    if (filters.logLevel) {
-      filtered = filtered.filter(log => log.Level === filters.logLevel);
+  const handleFilter = async (filters) => {
+    try {
+      setIsLoading(true);
+
+      let response;
+
+      if (filters.logLevel) {
+        response = await getLogByLevel(filters.logLevel.toLowerCase());
+      } else {
+        // Add a new API function that accepts date range
+        console.log(dateRange);
+        
+        response = await getLogsByDateRange(
+          dateRange?.from?.toISOString(),
+          dateRange?.to?.toISOString(),
+          logsData.page,
+          logsData.pageSize
+        );
+      }
+      console.log(response);
+      
+      const decodedLogs = decodeLogs(response.data || response);
+
+      setFilteredLogs(decodedLogs);
+      setServiceHealth(analyzeServiceHealth(decodedLogs));
+
+      setLogsData(prev => ({
+        ...prev,
+        page: response.page || 1,
+        totalCount: response.totalCount || decodedLogs.length,
+        totalPages: response.totalPages || Math.ceil(decodedLogs.length / prev.pageSize)
+      }));
+    } catch (error) {
+      console.error("Filtering failed:", error);
+    } finally {
+      setIsLoading(false);
     }
-    
-    if (filters.userId) {
-      filtered = filtered.filter(log => log.Context?.userId === filters.userId);
-    }
-    
-    if (filters.endpoint) {
-      filtered = filtered.filter(log => log.Context?.endpoint === filters.endpoint);
-    }
-    
-    if (dateRange?.from && dateRange?.to) {
-      filtered = filtered.filter(log => {
-        const logDate = new Date(log.TimeStamp);
-        return logDate >= dateRange.from && logDate <= dateRange.to;
-      });
-    }
-    
-    setFilteredLogs(filtered);
   };
 
   const handlePageChange = (newPage) => {
@@ -149,114 +206,135 @@ export default function LogManagementSystem() {
 
   return (
     <div className="container mx-auto py-6 space-y-4">
-      <div className="bg-gradient-to-r from-blue-50 to-indigo-50 p-6 rounded-lg border border-blue-100">
-        <h1 className="text-2xl font-bold text-gray-800 mb-2">Log Management System</h1>
-        <p className="text-gray-600">Monitor and analyze your application logs in real-time</p>
+      <div className="space-y-4">
+        <h1 className="text-2xl font-semibold text-gray-800">Log Dashboard</h1>
+
+        {serviceHealth.status !== "healthy" && (
+          <Alert variant={serviceHealth.status === "critical" ? "destructive" : "warning"}>
+            <AlertCircle className="h-4 w-4" />
+            <AlertTitle className="capitalize">{serviceHealth.status} Status</AlertTitle>
+            <AlertDescription>
+              {serviceHealth.message}
+            </AlertDescription>
+          </Alert>
+        )}
       </div>
-      
-      <SearchFilters 
-        onSearch={handleSearch} 
-        onFilter={handleFilter}
-        dateRange={dateRange}
-        setDateRange={setDateRange}
-      />
-      
-      <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="grid w-full grid-cols-2">
-          <TabsTrigger value="table" className="flex items-center gap-2">
-            <Table size={16} />
-            <span>Log Table</span>
-          </TabsTrigger>
-          <TabsTrigger value="analytics" className="flex items-center gap-2">
-            <BarChart3 size={16} />
-            <span>Analytics</span>
-          </TabsTrigger>
-        </TabsList>
-        
-        <TabsContent value="table" className="space-y-4">
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-            <div className="lg:col-span-2">
-              {isLoading ? (
-                <div className="h-60 flex items-center justify-center">
-                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
-                </div>
-              ) : (
-                <>
-                  <LogTable logs={filteredLogs} onLogSelect={setSelectedLog} />
-                  
-                  {/* Pagination Controls */}
-                  <div className="flex items-center justify-between mt-4">
-                    <div className="text-sm text-gray-600">
-                      Showing {filteredLogs.length} of {logsData.totalCount} logs
-                    </div>
-                    
-                    <div className="flex items-center gap-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handlePageChange(logsData.page - 1)}
-                        disabled={logsData.page === 1}
-                      >
-                        <ChevronLeft size={16} />
-                      </Button>
-                      
-                      <span className="text-sm">
-                        Page {logsData.page} of {logsData.totalPages}
-                      </span>
-                      
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handlePageChange(logsData.page + 1)}
-                        disabled={logsData.page >= logsData.totalPages}
-                      >
-                        <ChevronRight size={16} />
-                      </Button>
-                      
-                      <select
-                        value={logsData.pageSize}
-                        onChange={(e) => handlePageSizeChange(Number(e.target.value))}
-                        className="border rounded-md px-2 py-1 text-sm"
-                      >
-                        {[10, 20, 50, 100].map(size => (
-                          <option key={size} value={size}>
-                            {size} per page
-                          </option>
-                        ))}
-                      </select>
-                    </div>
+
+      <div className="bg-white rounded-lg border p-4 space-y-4">
+        <SearchFilters
+          onSearch={handleSearch}
+          onFilter={handleFilter}
+          dateRange={dateRange}
+          setDateRange={setDateRange}
+          className="border-b pb-4"
+        />
+
+        <Tabs value={activeTab} onValueChange={setActiveTab}>
+          <TabsList className="w-fit">
+            <TabsTrigger value="table" className="space-x-2">
+              <Table size={16} />
+              <span>Logs</span>
+            </TabsTrigger>
+            <TabsTrigger value="analytics" className="space-x-2">
+              <BarChart3 size={16} />
+              <span>Analytics</span>
+            </TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="table" className="space-y-4">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+              <div className="lg:col-span-2 space-y-4">
+                {isLoading ? (
+                  <div className="h-60 flex items-center justify-center">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
                   </div>
-                </>
-              )}
-            </div>
-            <div>
-              {selectedLog ? (
-                <div className="p-4 bg-gray-50 rounded-md border">
-                  <h3 className="font-medium mb-2">Log Details</h3>
-                  <pre className="bg-black text-green-400 p-4 rounded-md overflow-auto text-xs">
-                    {JSON.stringify(selectedLog, null, 2)}
-                  </pre>
-                </div>
-              ) : (
-                <div className="h-full flex items-center justify-center p-8 bg-gray-50 border rounded-md">
-                  <div className="text-center text-gray-500">
-                    <Eye size={24} className="mx-auto mb-2" />
-                    <p>Select a log to view details</p>
+                ) : (
+                  <>
+                    <LogTable
+                      logs={filteredLogs}
+                      onLogSelect={setSelectedLog}
+                      className="border rounded-md"
+                    />
+
+                    <div className="flex items-center justify-between">
+                      <div className="text-sm text-gray-600">
+                        Showing {(logsData.page - 1) * logsData.pageSize + 1}-
+                        {Math.min(logsData.page * logsData.pageSize, logsData.totalCount)} of {logsData.totalCount}
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handlePageChange(logsData.page - 1)}
+                          disabled={logsData.page === 1}
+                        >
+                          <ChevronLeft size={16} />
+                        </Button>
+
+                        <span className="text-sm">
+                          {logsData.page} / {logsData.totalPages}
+                        </span>
+
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handlePageChange(logsData.page + 1)}
+                          disabled={logsData.page >= logsData.totalPages}
+                        >
+                          <ChevronRight size={16} />
+                        </Button>
+
+                        <select
+                          value={logsData.pageSize}
+                          onChange={(e) => handlePageSizeChange(Number(e.target.value))}
+                          className="text-sm border rounded px-2 py-1 bg-transparent"
+                        >
+                          {[10, 20, 50, 100].map(size => (
+                            <option key={size} value={size}>
+                              {size}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
+
+              <div className="border rounded-md p-4">
+                {selectedLog ? (
+                  <div className="space-y-2">
+                    <h3 className="font-medium text-sm">Log Details</h3>
+                    <pre className="text-xs p-3 bg-gray-50 rounded overflow-auto">
+                      {JSON.stringify(selectedLog, null, 2)}
+                    </pre>
                   </div>
-                </div>
-              )}
+                ) : (
+                  <div className="h-full flex flex-col items-center justify-center text-gray-400 space-y-2">
+                    <Eye size={20} />
+                    <p className="text-sm">Select a log to inspect</p>
+                  </div>
+                )}
+              </div>
             </div>
-          </div>
-        </TabsContent>
-        
-        <TabsContent value="analytics" className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <LogsPerTimeChart logs={filteredLogs} />
-            <LogsByLevelChart logs={filteredLogs} customColors={fetchedCustomColors} />
-          </div>
-          <LogsByUserChart customColors={fetchedCustomColors || {}} logs={filteredLogs} />
-        </TabsContent>
-      </Tabs>
+          </TabsContent>
+
+          <TabsContent value="analytics" className="space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="border rounded-md p-4">
+                <LogsPerTimeChart logs={filteredLogs} />
+              </div>
+              <div className="border rounded-md p-4">
+                <LogsByLevelChart logs={filteredLogs} customColors={fetchedCustomColors} />
+              </div>
+            </div>
+            <div className="border rounded-md p-4">
+              <LogsByUserChart customColors={fetchedCustomColors} logs={filteredLogs} />
+            </div>
+          </TabsContent>
+        </Tabs>
+      </div>
     </div>
   );
 }
